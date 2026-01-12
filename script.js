@@ -1,47 +1,81 @@
-let pipeline;
-const chat = document.getElementById("chat");
+let generator;
+let ready = false;
+
+const messages = document.getElementById("messages");
 const input = document.getElementById("input");
-const send = document.getElementById("send");
+const sendBtn = document.getElementById("send-btn");
+const statusDot = document.getElementById("status-dot");
+const statusText = document.getElementById("status-text");
 
-async function init() {
-  send.disabled = true;
-  const status = document.createElement("div");
-  status.className = "message ai";
-  status.innerHTML = `<div class="bubble">Chargement du moteur ROCKET AI…</div>`;
-  chat.appendChild(status);
-
-  pipeline = await window.transformers.pipeline("text-generation", "Xenova/distilgpt2");
-  send.disabled = false;
-
-  status.innerHTML = `<div class="bubble">ROCKET AI est prêt. Pose ta question.</div>`;
+function setStatus(mode, text) {
+    statusDot.className = "status-dot " + mode;
+    statusText.textContent = text;
 }
 
 function addMessage(role, text) {
-  const msg = document.createElement("div");
-  msg.className = `message ${role}`;
-  msg.innerHTML = `<div class="bubble">${text}</div>`;
-  chat.appendChild(msg);
-  chat.scrollTop = chat.scrollHeight;
+    const div = document.createElement("div");
+    div.className = "message " + (role === "user" ? "message-user" : "message-ai");
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar " + (role === "user" ? "user-avatar" : "ai-avatar");
+    avatar.textContent = role === "user" ? "U" : "R";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.innerHTML = text.replace(/\n/g, "<br>");
+
+    div.appendChild(avatar);
+    div.appendChild(bubble);
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
 }
 
-send.addEventListener("click", async () => {
-  const question = input.value.trim();
-  if (!question) return;
+async function init() {
+    setStatus("loading", "Chargement du moteur ROCKET AI…");
+    sendBtn.disabled = true;
 
-  addMessage("user", question);
-  input.value = "";
-  send.disabled = true;
+    generator = await window.transformers.pipeline(
+        "text-generation",
+        "Xenova/distilgpt2"
+    );
 
-  const prompt = `Tu es ROCKET AI, un assistant intelligent qui répond en français de façon concise.\nUtilisateur : ${question}\nROCKET AI :`;
+    ready = true;
+    setStatus("online", "Prêt.");
+    sendBtn.disabled = false;
 
-  const output = await pipeline(prompt, {
-    max_new_tokens: 100,
-    temperature: 0.7,
-    do_sample: true,
-  });
+    addMessage("ai", "ROCKET AI est prêt. Pose ta question.");
+}
 
-  addMessage("ai", output[0].generated_text.split("ROCKET AI :")[1].trim());
-  send.disabled = false;
+async function send() {
+    const text = input.value.trim();
+    if (!text || !ready) return;
+
+    addMessage("user", text);
+    input.value = "";
+    sendBtn.disabled = true;
+    setStatus("loading", "ROCKET AI réfléchit…");
+
+    const prompt = `Tu es ROCKET AI, un assistant francophone concis.\nUtilisateur : ${text}\nROCKET AI :`;
+
+    const out = await generator(prompt, {
+        max_new_tokens: 80,
+        temperature: 0.7,
+    });
+
+    const answer = out[0].generated_text.split("ROCKET AI :")[1]?.trim() || "Je n’ai pas compris.";
+
+    addMessage("ai", answer);
+
+    setStatus("online", "Prêt.");
+    sendBtn.disabled = false;
+}
+
+sendBtn.addEventListener("click", send);
+input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        send();
+    }
 });
 
 init();
